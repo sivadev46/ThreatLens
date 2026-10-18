@@ -1,0 +1,6 @@
+{
+  "name": "Security Log Analyzer & Intrusion Detection Dashboard",
+  "description": "Local security log analysis and intrusion detection dashboard featuring rule-based alert correlation, log exploration, IP blocklisting, and audit reporting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
