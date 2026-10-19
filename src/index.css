@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #080c14;
+    color: #e2e8f0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  html.light body {
+    background-color: #f8fafc;
+    color: #0f172a;
+  }
+
+  html.dark body {
+    background-color: #080c14;
+    color: #e2e8f0;
+  }
+}
+
+/* Custom scrollbars that adapt to both modes */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+html.dark ::-webkit-scrollbar-track,
+::-webkit-scrollbar-track {
+  background: #090e18;
+}
+
+html.light ::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+html.dark ::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 4px;
+}
+
+html.light ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Semantic utility surfaces for Sentinel SOC */
+.bg-soc-canvas {
+  background-color: var(--bg-canvas, #080c14);
+}
+
+html.light .bg-soc-canvas {
+  background-color: #f8fafc;
+}
+
+html.dark .bg-soc-canvas {
+  background-color: #080c14;
+}
+
+.bg-soc-surface {
+  background-color: #0c121e;
+}
+
+html.light .bg-soc-surface {
+  background-color: #ffffff;
+}
+
+html.dark .bg-soc-surface {
+  background-color: #0c121e;
+}
+
+.border-soc {
+  border-color: rgba(30, 41, 59, 0.8);
+}
+
+html.light .border-soc {
+  border-color: #e2e8f0;
+}
+
+html.dark .border-soc {
+  border-color: rgba(30, 41, 59, 0.8);
+}

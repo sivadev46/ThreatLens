@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Build output
+build/
+dist/
+coverage/
+target/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# IDE and operating system
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Java
+*.class
+
+# Local database configuration
+application-local.properties
+db.properties
+
+# Original project archive
+security-log-analyzer-&-intrusion-detection-dashboard (1).zip
