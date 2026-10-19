@@ -1088,7 +1088,7 @@ CREATE TABLE IF NOT EXISTS audit_logs (
                       <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
                       <span className="font-semibold dark:text-slate-200 text-slate-800">{res.name}</span>
                     </div>
-                    <p className="text-[11px] dark:text-slate-400 text-slate-500 mt-1 pl-6">{res.message}</p>
+                    <p className="text-[11px] dark:text-slate-400 text-slate-500 mt-1 pl-6">{res.description}</p>
                   </div>
                   <span className="font-mono text-[10px] text-emerald-500 font-semibold uppercase">PASS</span>
                 </div>
