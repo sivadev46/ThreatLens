@@ -130,22 +130,16 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
-  // Trend data based on time window
-  const eventsTrendData = [
-    { time: '10:00', total: 24, failedLogins: 1 },
-    { time: '10:05', total: 42, failedLogins: 0 },
-    { time: '10:10', total: 68, failedLogins: 2 },
-    { time: '10:15', total: 115, failedLogins: summary.failedLoginAttempts },
-    { time: '10:20', total: 54, failedLogins: 1 },
-    { time: '10:25', total: 38, failedLogins: 0 },
-  ];
+  // Dynamic trend data calculated from actual stored event timestamps
+  const eventsTrendData = securityService.getEventsTimeSeries();
 
-  // Severity breakdown
+  // Dynamic severity breakdown from actual alerts
+  const allAlerts = securityService.getAlerts();
   const severityData = [
-    { name: 'Critical', count: summary.criticalAlerts, color: '#f43f5e' },
-    { name: 'High', count: summary.highAlerts, color: '#f59e0b' },
-    { name: 'Medium', count: 1, color: '#eab308' },
-    { name: 'Low', count: 0, color: '#0284c7' },
+    { name: 'Critical', count: allAlerts.filter((a) => a.severity === 'CRITICAL' && a.status !== 'RESOLVED').length, color: '#f43f5e' },
+    { name: 'High', count: allAlerts.filter((a) => a.severity === 'HIGH' && a.status !== 'RESOLVED').length, color: '#f59e0b' },
+    { name: 'Medium', count: allAlerts.filter((a) => a.severity === 'MEDIUM' && a.status !== 'RESOLVED').length, color: '#eab308' },
+    { name: 'Low', count: allAlerts.filter((a) => a.severity === 'LOW' && a.status !== 'RESOLVED').length, color: '#0284c7' },
   ];
 
   const totalThreatAlerts = summary.criticalAlerts + summary.highAlerts;

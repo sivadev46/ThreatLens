@@ -6,6 +6,7 @@ import { ToastProvider } from './components/common/NotificationToast';
 import { AppLayout } from './components/layout/AppLayout';
 import { DashboardPage } from './pages/DashboardPage';
 import { LogExplorerPage } from './pages/LogExplorerPage';
+import { FileManagerPage } from './pages/FileManagerPage';
 import { AlertsPage } from './pages/AlertsPage';
 import { DetectionRulesPage } from './pages/DetectionRulesPage';
 import { BlocklistPage } from './pages/BlocklistPage';
@@ -50,6 +51,9 @@ export default function App() {
 
                 {/* 2. Logs */}
                 <Route path="logs" element={<LogExplorerPage />} />
+
+                {/* Dedicated File Manager */}
+                <Route path="files" element={<FileManagerPage />} />
 
                 {/* 3. Alerts */}
                 <Route path="alerts" element={<AlertsPage />} />

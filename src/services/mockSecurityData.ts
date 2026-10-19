@@ -5,6 +5,7 @@ import {
   BlocklistEntry,
   AuditLogEntry,
   UserProfile,
+  UploadedFileRecord,
 } from '../types/security';
 
 export const INITIAL_USER: UserProfile = {
@@ -483,3 +484,63 @@ export const INITIAL_AUDIT_LOGS: AuditLogEntry[] = [
     status: 'SUCCESS',
   },
 ];
+
+export const INITIAL_UPLOADED_FILES: UploadedFileRecord[] = [
+  {
+    id: 'file-sys-001',
+    fileName: 'auth-gateway-01.log',
+    fileType: 'log',
+    uploadDate: '2026-03-14 10:10:00',
+    fileSizeFormatted: '1.24 KB',
+    fileSizeBytes: 1270,
+    status: 'Completed',
+    parsedEntries: 8,
+    rejectedEntries: 0,
+    totalLines: 8,
+    newAlertsGenerated: 1,
+    isSystemSample: true,
+  },
+  {
+    id: 'file-sys-002',
+    fileName: 'perimeter-firewall.log',
+    fileType: 'log',
+    uploadDate: '2026-03-14 10:13:00',
+    fileSizeFormatted: '410 B',
+    fileSizeBytes: 410,
+    status: 'Completed',
+    parsedEntries: 2,
+    rejectedEntries: 0,
+    totalLines: 2,
+    newAlertsGenerated: 2,
+    isSystemSample: true,
+  },
+  {
+    id: 'file-sys-003',
+    fileName: 'web-edge-nginx.log',
+    fileType: 'log',
+    uploadDate: '2026-03-14 10:12:00',
+    fileSizeFormatted: '380 B',
+    fileSizeBytes: 380,
+    status: 'Completed',
+    parsedEntries: 2,
+    rejectedEntries: 0,
+    totalLines: 2,
+    newAlertsGenerated: 1,
+    isSystemSample: true,
+  },
+  {
+    id: 'file-sys-004',
+    fileName: 'app-service.log',
+    fileType: 'log',
+    uploadDate: '2026-03-14 10:14:00',
+    fileSizeFormatted: '520 B',
+    fileSizeBytes: 520,
+    status: 'Completed',
+    parsedEntries: 3,
+    rejectedEntries: 0,
+    totalLines: 3,
+    newAlertsGenerated: 0,
+    isSystemSample: true,
+  },
+];
+

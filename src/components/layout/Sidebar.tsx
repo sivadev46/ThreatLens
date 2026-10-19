@@ -11,6 +11,7 @@ import {
   History,
   Settings,
   RotateCcw,
+  FolderArchive,
 } from 'lucide-react';
 import { securityService } from '../../services/securityService';
 import { useToast } from '../common/NotificationToast';
@@ -32,10 +33,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ onMobileClose, openAlertsCount
     });
   };
 
-  // Exactly the 8 simplified main navigation items
   const navItems = [
     { to: '/', label: 'Overview', icon: <LayoutDashboard className="w-4 h-4" /> },
     { to: '/logs', label: 'Logs', icon: <FileText className="w-4 h-4" /> },
+    { to: '/files', label: 'File Manager', icon: <FolderArchive className="w-4 h-4" /> },
     {
       to: '/alerts',
       label: 'Alerts',

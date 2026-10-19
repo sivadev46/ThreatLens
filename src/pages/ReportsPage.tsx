@@ -92,15 +92,12 @@ export const ReportsPage: React.FC = () => {
     severity: r.severity,
   }));
 
-  // Velocity time-series based on window
-  const velocityData = [
-    { time: '08:00', total: 18, failed: 1 },
-    { time: '09:00', total: 32, failed: 0 },
-    { time: '10:00', total: 84, failed: logs.filter((l) => l.eventType === 'LOGIN_FAILED').length },
-    { time: '11:00', total: 46, failed: 2 },
-    { time: '12:00', total: 29, failed: 0 },
-    { time: '13:00', total: 38, failed: 1 },
-  ];
+  // Dynamic velocity time-series based on actual logs
+  const velocityData = securityService.getEventsTimeSeries().map((d) => ({
+    time: d.time,
+    total: d.total,
+    failed: d.failedLogins,
+  }));
 
   const handleQuickBlock = (ip: string) => {
     const res = securityService.addBlocklistEntry(ip, 'Blocked from Analytics audit');

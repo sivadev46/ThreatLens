@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   UploadCloud,
   FileText,
@@ -26,6 +27,7 @@ import { LogEntry, LogImportResult } from '../types/security';
 
 export const LogExplorerPage: React.FC = () => {
   const { showToast } = useToast();
+  const [searchParams] = useSearchParams();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -36,6 +38,15 @@ export const LogExplorerPage: React.FC = () => {
   const [selectedStatusCode, setSelectedStatusCode] = useState<string>('ALL');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+  // Read URL query parameter for source filtering (e.g. from File Manager)
+  useEffect(() => {
+    const src = searchParams.get('source');
+    if (src) {
+      setSelectedSource(src);
+      setCurrentPage(1);
+    }
+  }, [searchParams]);
 
   // Selected log for detail inspection
   const [inspectLog, setInspectLog] = useState<LogEntry | null>(null);
@@ -113,7 +124,7 @@ export const LogExplorerPage: React.FC = () => {
       const text = await file.text();
       setImportProgress(Math.round(((i + 0.5) / fileArray.length) * 80));
 
-      const res = securityService.importLogContent(text, file.name);
+      const res = securityService.importLogContent(text, file.name, file.size);
       totalParsed += res.parsedCount;
       totalErrors += res.errorCount;
       totalAlerts += res.newAlertsGenerated;
@@ -138,6 +149,9 @@ export const LogExplorerPage: React.FC = () => {
 
       setLastImportResult(summaryObj);
       setShowImportSummary(true);
+      if (fileArray.length === 1) {
+        setSelectedSource(fileArray[0].name);
+      }
       setCurrentPage(1);
 
       showToast({
@@ -558,11 +572,14 @@ export const LogExplorerPage: React.FC = () => {
                   className="dark:bg-[#070b13] bg-white border dark:border-slate-800 border-slate-200 rounded-lg px-2 py-1 text-xs dark:text-slate-200 text-slate-800 focus:outline-none cursor-pointer"
                 >
                   <option value="ALL">All Sources ({logs.length})</option>
-                  {logSources.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
+                  {logSources.map((s) => {
+                    const count = logs.filter((l) => l.logSource === s).length;
+                    return (
+                      <option key={s} value={s}>
+                        {s} ({count})
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 

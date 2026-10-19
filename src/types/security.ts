@@ -128,4 +128,25 @@ export interface LogImportResult {
   sourceName: string;
   importTimestamp: string;
   malformedLines: Array<{ line: number; raw: string; error: string }>;
+  fileId?: string;
 }
+
+export type FileImportStatus = 'Processing' | 'Completed' | 'Completed with Errors' | 'Failed' | 'Archived';
+
+export interface UploadedFileRecord {
+  id: string;
+  fileName: string;
+  fileType: string;
+  uploadDate: string;
+  fileSizeFormatted: string;
+  fileSizeBytes: number;
+  status: FileImportStatus;
+  parsedEntries: number;
+  rejectedEntries: number;
+  totalLines: number;
+  newAlertsGenerated: number;
+  malformedLines?: Array<{ line: number; raw: string; error: string }>;
+  rawContent?: string;
+  isSystemSample?: boolean;
+}
+

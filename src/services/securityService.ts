@@ -8,6 +8,8 @@ import {
   UserProfile,
   DashboardSummary,
   LogImportResult,
+  UploadedFileRecord,
+  FileImportStatus,
 } from '../types/security';
 import {
   INITIAL_USER,
@@ -16,6 +18,7 @@ import {
   INITIAL_LOG_ENTRIES,
   INITIAL_ALERTS,
   INITIAL_AUDIT_LOGS,
+  INITIAL_UPLOADED_FILES,
 } from './mockSecurityData';
 
 const STORAGE_KEYS = {
@@ -25,7 +28,17 @@ const STORAGE_KEYS = {
   BLOCKLIST: 'sla_blocklist_v1',
   AUDIT: 'sla_audit_v1',
   USER: 'sla_user_v1',
+  FILES: 'sla_files_v1',
 };
+
+function formatBytes(bytes: number, decimals = 1): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
 
 class SecurityService {
   private logs: LogEntry[] = [];
@@ -33,6 +46,7 @@ class SecurityService {
   private alerts: Alert[] = [];
   private blocklist: BlocklistEntry[] = [];
   private auditLogs: AuditLogEntry[] = [];
+  private uploadedFiles: UploadedFileRecord[] = [];
   private currentUser: UserProfile = INITIAL_USER;
   private listeners: Array<() => void> = [];
 
@@ -48,6 +62,7 @@ class SecurityService {
       const storedBlocklist = localStorage.getItem(STORAGE_KEYS.BLOCKLIST);
       const storedAudit = localStorage.getItem(STORAGE_KEYS.AUDIT);
       const storedUser = localStorage.getItem(STORAGE_KEYS.USER);
+      const storedFiles = localStorage.getItem(STORAGE_KEYS.FILES);
 
       this.logs = storedLogs ? JSON.parse(storedLogs) : [...INITIAL_LOG_ENTRIES];
       this.rules = storedRules ? JSON.parse(storedRules) : [...INITIAL_DETECTION_RULES];
@@ -55,6 +70,7 @@ class SecurityService {
       this.blocklist = storedBlocklist ? JSON.parse(storedBlocklist) : [...INITIAL_BLOCKLIST];
       this.auditLogs = storedAudit ? JSON.parse(storedAudit) : [...INITIAL_AUDIT_LOGS];
       this.currentUser = storedUser ? JSON.parse(storedUser) : { ...INITIAL_USER };
+      this.uploadedFiles = storedFiles ? JSON.parse(storedFiles) : [...INITIAL_UPLOADED_FILES];
     } catch {
       this.logs = [...INITIAL_LOG_ENTRIES];
       this.rules = [...INITIAL_DETECTION_RULES];
@@ -62,6 +78,7 @@ class SecurityService {
       this.blocklist = [...INITIAL_BLOCKLIST];
       this.auditLogs = [...INITIAL_AUDIT_LOGS];
       this.currentUser = { ...INITIAL_USER };
+      this.uploadedFiles = [...INITIAL_UPLOADED_FILES];
     }
   }
 
@@ -73,6 +90,7 @@ class SecurityService {
       localStorage.setItem(STORAGE_KEYS.BLOCKLIST, JSON.stringify(this.blocklist));
       localStorage.setItem(STORAGE_KEYS.AUDIT, JSON.stringify(this.auditLogs));
       localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(this.currentUser));
+      localStorage.setItem(STORAGE_KEYS.FILES, JSON.stringify(this.uploadedFiles));
     } catch {
       // storage unavailable fallback
     }
@@ -212,13 +230,17 @@ class SecurityService {
     };
   }
 
-  public importLogContent(content: string, fileName = 'imported_logs.log'): LogImportResult {
+  public importLogContent(
+    content: string,
+    fileName = 'imported_logs.log',
+    fileSizeBytes?: number
+  ): LogImportResult {
     const lines = content.split('\n');
     const parsedEntries: LogEntry[] = [];
     const malformedLines: Array<{ line: number; raw: string; error: string }> = [];
 
     lines.forEach((line, index) => {
-      if (!line.trim()) return;
+      if (!line.trim() || line.trim().startsWith('#')) return;
       const { entry, error } = this.parseLogLine(line, index + 1, fileName);
       if (error) {
         malformedLines.push({ line: index + 1, raw: line, error });
@@ -227,19 +249,72 @@ class SecurityService {
       }
     });
 
-    // Add to logs collection (deduplicate by raw line + timestamp)
-    this.logs = [...parsedEntries, ...this.logs];
+    // Check existing logs to deduplicate entries by signature
+    const existingSignatures = new Set(
+      this.logs.map((l) => `${l.timestamp}|${l.sourceIp}|${l.username}|${l.eventType}|${l.endpoint}`)
+    );
 
-    // Trigger local simulation rule evaluation
-    const newAlertsGenerated = this.simulateRuleEvaluation(parsedEntries);
+    const newUniqueEntries: LogEntry[] = [];
+    parsedEntries.forEach((entry) => {
+      const sig = `${entry.timestamp}|${entry.sourceIp}|${entry.username}|${entry.eventType}|${entry.endpoint}`;
+      if (!existingSignatures.has(sig)) {
+        existingSignatures.add(sig);
+        newUniqueEntries.push(entry);
+      }
+    });
 
+    // Add only new unique entries to logs collection
+    this.logs = [...newUniqueEntries, ...this.logs];
+
+    // Trigger local simulation rule evaluation on new unique entries
+    const newAlertsGenerated = newUniqueEntries.length > 0
+      ? this.simulateRuleEvaluation(newUniqueEntries)
+      : 0;
+
+    // Determine status
+    let status: FileImportStatus = 'Completed';
+    if (parsedEntries.length === 0) {
+      status = 'Failed';
+    } else if (malformedLines.length > 0) {
+      status = 'Completed with Errors';
+    }
+
+    const calculatedSize = fileSizeBytes || new Blob([content]).size;
+    const fileId = `file-${Date.now()}-${Math.floor(Math.random() * 9000 + 1000)}`;
+
+    const fileRecord: UploadedFileRecord = {
+      id: fileId,
+      fileName,
+      fileType: fileName.includes('.') ? fileName.split('.').pop()?.toLowerCase() || 'log' : 'log',
+      uploadDate: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      fileSizeFormatted: formatBytes(calculatedSize),
+      fileSizeBytes: calculatedSize,
+      status,
+      parsedEntries: parsedEntries.length,
+      rejectedEntries: malformedLines.length,
+      totalLines: lines.length,
+      newAlertsGenerated,
+      malformedLines,
+      rawContent: content.length <= 500000 ? content : content.substring(0, 500000),
+      isSystemSample: false,
+    };
+
+    // Prepend to uploaded files list, updating if existing non-system file with exact same name exists
+    const existingFileIdx = this.uploadedFiles.findIndex((f) => f.fileName === fileName && !f.isSystemSample);
+    if (existingFileIdx >= 0) {
+      this.uploadedFiles[existingFileIdx] = fileRecord;
+    } else {
+      this.uploadedFiles.unshift(fileRecord);
+    }
+
+    const duplicatesSkipped = parsedEntries.length - newUniqueEntries.length;
     this.logAudit({
       actor: this.currentUser.username,
       action: 'LOG_IMPORT',
       category: 'LOG_IMPORT',
-      details: `Imported ${parsedEntries.length} valid entries from ${fileName} (${malformedLines.length} malformed)`,
+      details: `Imported ${parsedEntries.length} valid entries from ${fileName} (${newUniqueEntries.length} new ingested, ${duplicatesSkipped} duplicates skipped, ${malformedLines.length} malformed)`,
       ipAddress: '127.0.0.1',
-      status: malformedLines.length > 0 ? 'SUCCESS' : 'SUCCESS',
+      status: 'SUCCESS',
     });
 
     this.persist();
@@ -251,9 +326,165 @@ class SecurityService {
       newAlertsGenerated,
       fileName,
       sourceName: fileName,
-      importTimestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      importTimestamp: fileRecord.uploadDate,
       malformedLines,
+      fileId,
     };
+  }
+
+  // File Manager API
+  public getUploadedFiles(): UploadedFileRecord[] {
+    return [...this.uploadedFiles];
+  }
+
+  public getUploadedFileById(id: string): UploadedFileRecord | undefined {
+    return this.uploadedFiles.find((f) => f.id === id);
+  }
+
+  public getFileLogs(sourceName: string): LogEntry[] {
+    return this.logs.filter((l) => l.logSource === sourceName);
+  }
+
+  public getFilesSummary() {
+    const totalFiles = this.uploadedFiles.length;
+    const completedCount = this.uploadedFiles.filter((f) => f.status === 'Completed').length;
+    const failedCount = this.uploadedFiles.filter((f) => f.status === 'Failed' || f.status === 'Completed with Errors').length;
+    const totalEventsImported = this.uploadedFiles.reduce((acc, f) => acc + f.parsedEntries, 0);
+
+    return {
+      totalFiles,
+      completedCount,
+      successfullyProcessed: completedCount,
+      failedCount,
+      failedImports: failedCount,
+      totalEventsImported,
+    };
+  }
+
+  public deleteUploadedFile(id: string): {
+    success: boolean;
+    status: 'Archived' | 'Deleted' | 'Failed';
+    message: string;
+    evidenceProtectedCount?: number;
+  } {
+    const file = this.uploadedFiles.find((f) => f.id === id);
+    if (!file) {
+      return { success: false, status: 'Failed', message: 'File record not found.' };
+    }
+
+    if (file.isSystemSample) {
+      return { success: false, status: 'Failed', message: 'System baseline log files cannot be deleted.' };
+    }
+
+    // Safety check: Find all evidence logs tied to active or existing alerts
+    const protectedEvidenceIds = new Set<string>();
+    this.alerts.forEach((alert) => {
+      alert.evidenceLogIds?.forEach((eId) => protectedEvidenceIds.add(eId));
+    });
+
+    // Check which logs from this file are protected evidence
+    const fileLogs = this.logs.filter((l) => l.logSource === file.fileName);
+    const evidenceLogs = fileLogs.filter((l) => protectedEvidenceIds.has(l.id));
+
+    if (evidenceLogs.length > 0) {
+      // Retain evidence logs, remove non-evidence logs, mark file as Archived
+      file.status = 'Archived';
+      this.logs = this.logs.filter((l) => l.logSource !== file.fileName || protectedEvidenceIds.has(l.id));
+
+      this.logAudit({
+        actor: this.currentUser.username,
+        action: 'FILE_ARCHIVE',
+        category: 'LOG_IMPORT',
+        details: `Archived ${file.fileName}: safely retained ${evidenceLogs.length} incident evidence log(s) for active security alerts`,
+        ipAddress: '127.0.0.1',
+        status: 'SUCCESS',
+      });
+      this.persist();
+      return {
+        success: true,
+        status: 'Archived',
+        message: `File archived: ${evidenceLogs.length} incident evidence log(s) preserved to protect forensic audit trails.`,
+        evidenceProtectedCount: evidenceLogs.length,
+      };
+    }
+
+    // Safe to delete completely: remove all logs belonging to this source
+    this.logs = this.logs.filter((l) => l.logSource !== file.fileName);
+    this.uploadedFiles = this.uploadedFiles.filter((f) => f.id !== id);
+
+    this.logAudit({
+      actor: this.currentUser.username,
+      action: 'FILE_DELETE',
+      category: 'LOG_IMPORT',
+      details: `Deleted file ${file.fileName} and purged ${fileLogs.length} associated log entries`,
+      ipAddress: '127.0.0.1',
+      status: 'SUCCESS',
+    });
+
+    this.persist();
+    return {
+      success: true,
+      status: 'Deleted',
+      message: `File ${file.fileName} deleted and ${fileLogs.length} event records purged.`,
+    };
+  }
+
+  public reprocessUploadedFile(id: string): { success: boolean; message: string; result?: LogImportResult } {
+    const file = this.uploadedFiles.find((f) => f.id === id);
+    if (!file) {
+      return { success: false, message: 'File not found.' };
+    }
+    if (!file.rawContent) {
+      return { success: false, message: 'Raw content not available for reprocessing.' };
+    }
+
+    // Purge previous non-evidence logs from this source before reprocessing
+    const protectedEvidenceIds = new Set<string>();
+    this.alerts.forEach((alert) => {
+      alert.evidenceLogIds?.forEach((eId) => protectedEvidenceIds.add(eId));
+    });
+    this.logs = this.logs.filter((l) => l.logSource !== file.fileName || protectedEvidenceIds.has(l.id));
+
+    // Re-import
+    const res = this.importLogContent(file.rawContent, file.fileName, file.fileSizeBytes);
+    this.persist();
+    return {
+      success: true,
+      message: `Reprocessed ${file.fileName}: ${res.parsedCount} valid events, ${res.newAlertsGenerated} alerts generated.`,
+      result: res,
+    };
+  }
+
+  public getEventsTimeSeries(): Array<{ time: string; total: number; failedLogins: number }> {
+    if (this.logs.length === 0) {
+      return [
+        { time: '08:00', total: 0, failedLogins: 0 },
+        { time: '10:00', total: 0, failedLogins: 0 },
+        { time: '12:00', total: 0, failedLogins: 0 },
+        { time: '14:00', total: 0, failedLogins: 0 },
+      ];
+    }
+
+    const bucketMap = new Map<string, { total: number; failedLogins: number }>();
+    const sorted = [...this.logs].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+
+    sorted.forEach((l) => {
+      const timeStr = l.timestamp.length >= 16 ? l.timestamp.substring(11, 16) : '00:00';
+      const cur = bucketMap.get(timeStr) || { total: 0, failedLogins: 0 };
+      cur.total++;
+      if (l.eventType === 'LOGIN_FAILED') cur.failedLogins++;
+      bucketMap.set(timeStr, cur);
+    });
+
+    const list = Array.from(bucketMap.entries())
+      .map(([time, data]) => ({ time, total: data.total, failedLogins: data.failedLogins }))
+      .sort((a, b) => a.time.localeCompare(b.time));
+
+    if (list.length > 10) {
+      const step = Math.ceil(list.length / 8);
+      return list.filter((_, idx) => idx % step === 0);
+    }
+    return list.length > 0 ? list : [{ time: 'Now', total: this.logs.length, failedLogins: 0 }];
   }
 
   // Local simulated rule engine (mirrors Stage D Java business logic in frontend prototype)
@@ -937,6 +1168,7 @@ class SecurityService {
     this.blocklist = [...INITIAL_BLOCKLIST];
     this.auditLogs = [...INITIAL_AUDIT_LOGS];
     this.currentUser = { ...INITIAL_USER };
+    this.uploadedFiles = [...INITIAL_UPLOADED_FILES];
     this.persist();
   }
 }
