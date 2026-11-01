@@ -37,10 +37,28 @@ public class DatabaseConfig {
         }
 
         HikariConfig config = new HikariConfig();
-        config.setDriverClassName(props.getProperty("db.driver", "com.mysql.cj.jdbc.Driver"));
-        config.setJdbcUrl(props.getProperty("db.url", "jdbc:mysql://localhost:3306/sentinel_soc?useSSL=false&serverTimezone=UTC"));
-        config.setUsername(props.getProperty("db.username", "soc_app_user"));
-        config.setPassword(props.getProperty("db.password", "soc_secure_password_2026"));
+        
+        // Environment variable support with fallback to application.properties
+        String envDriver = System.getenv("DB_DRIVER");
+        String driver = envDriver != null ? envDriver : props.getProperty("db.driver", "com.mysql.cj.jdbc.Driver");
+        
+        String envUrl = System.getenv("DB_URL");
+        if (envUrl == null) envUrl = System.getenv("MYSQL_URL");
+        String url = envUrl != null ? envUrl : props.getProperty("db.url", "jdbc:mysql://localhost:3306/sentinel_soc?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC");
+        
+        String envUser = System.getenv("DB_USER");
+        if (envUser == null) envUser = System.getenv("DB_USERNAME");
+        if (envUser == null) envUser = System.getenv("MYSQL_USER");
+        String username = envUser != null ? envUser : props.getProperty("db.username", "soc_app_user");
+        
+        String envPassword = System.getenv("DB_PASSWORD");
+        if (envPassword == null) envPassword = System.getenv("MYSQL_PASSWORD");
+        String password = envPassword != null ? envPassword : props.getProperty("db.password", "soc_secure_password_2026");
+
+        config.setDriverClassName(driver);
+        config.setJdbcUrl(url);
+        config.setUsername(username);
+        config.setPassword(password);
 
         config.setMaximumPoolSize(Integer.parseInt(props.getProperty("db.pool.maximum-pool-size", "10")));
         config.setMinimumIdle(Integer.parseInt(props.getProperty("db.pool.minimum-idle", "2")));
@@ -54,7 +72,7 @@ public class DatabaseConfig {
 
         try {
             dataSource = new HikariDataSource(config);
-            LOGGER.info("HikariCP connection pool initialized successfully.");
+            LOGGER.info("HikariCP connection pool initialized successfully for " + url + " as user " + username);
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "Could not connect to MySQL 8 database yet: " + e.getMessage());
         }

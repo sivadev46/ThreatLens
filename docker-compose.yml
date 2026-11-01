@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  threatlens-mysql:
+    image: mysql:8.0
+    container_name: threatlens-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password_college_project
+      MYSQL_DATABASE: sentinel_soc
+      MYSQL_USER: soc_app_user
+      MYSQL_PASSWORD: soc_secure_password_2026
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./setup_database.sql:/docker-entrypoint-initdb.d/init.sql
+      - mysql_data:/var/lib/mysql
+
+  threatlens-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: threatlens-backend
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: 8080
+      DB_URL: jdbc:mysql://threatlens-mysql:3306/sentinel_soc?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      DB_USER: soc_app_user
+      DB_PASSWORD: soc_secure_password_2026
+    depends_on:
+      - threatlens-mysql
+
+volumes:
+  mysql_data:

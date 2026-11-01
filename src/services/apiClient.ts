@@ -12,9 +12,12 @@ export interface ApiResponse<T> {
 }
 
 export interface BackendHealth {
-  status: 'UP' | 'DOWN' | 'UNKNOWN';
-  version?: string;
+  status: 'UP' | 'DOWN' | 'DEGRADED' | 'UNKNOWN';
+  javaStatus?: 'UP' | 'DOWN';
+  databaseStatus?: 'CONNECTED' | 'DISCONNECTED';
   database?: 'CONNECTED' | 'DISCONNECTED';
+  overallStatus?: string;
+  version?: string;
   uptimeSeconds?: number;
   message?: string;
 }
@@ -23,7 +26,12 @@ class ApiClient {
   private baseUrl: string;
   private timeoutMs: number;
 
-  constructor(baseUrl = 'http://localhost:8080/api/v1', timeoutMs = 4000) {
+  constructor(
+    baseUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) ||
+      (typeof localStorage !== 'undefined' && localStorage.getItem('sla_api_url')) ||
+      'http://localhost:8080/api/v1',
+    timeoutMs = 4000
+  ) {
     this.baseUrl = baseUrl;
     this.timeoutMs = timeoutMs;
   }
@@ -34,6 +42,9 @@ class ApiClient {
 
   public setBaseUrl(url: string): void {
     this.baseUrl = url.replace(/\/+$/, '');
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('sla_api_url', this.baseUrl);
+    }
   }
 
   /**
@@ -53,21 +64,47 @@ class ApiClient {
       if (!res.ok) {
         return {
           status: 'DOWN',
+          javaStatus: 'DOWN',
+          databaseStatus: 'DISCONNECTED',
+          database: 'DISCONNECTED',
           message: `Server returned HTTP ${res.status}: ${res.statusText}`,
         };
       }
 
       const json = await res.json();
+      // Handle both direct Actuator-style and wrapped { success: true, data: { ... } } responses
+      const payload = json.data && typeof json.data === 'object' ? { ...json, ...json.data } : json;
+
+      const rawOverall = payload.status || payload.overallStatus;
+      const status: 'UP' | 'DOWN' | 'DEGRADED' =
+        rawOverall === 'UP' ? 'UP' : rawOverall === 'DEGRADED' ? 'DEGRADED' : 'DOWN';
+
+      const dbStatus: 'CONNECTED' | 'DISCONNECTED' =
+        payload.databaseStatus === 'CONNECTED' || payload.database === 'CONNECTED'
+          ? 'CONNECTED'
+          : 'DISCONNECTED';
+
+      const javaStatus: 'UP' | 'DOWN' =
+        payload.javaStatus === 'UP' || payload.status === 'UP' || payload.status === 'DEGRADED'
+          ? 'UP'
+          : 'DOWN';
+
       return {
-        status: json.status === 'UP' ? 'UP' : 'DOWN',
-        version: json.version || '1.0.0-Java17',
-        database: json.database || 'DISCONNECTED',
-        uptimeSeconds: json.uptimeSeconds || 0,
-        message: json.message || 'Java 17 REST Service Operational',
+        status,
+        overallStatus: rawOverall || status,
+        javaStatus,
+        databaseStatus: dbStatus,
+        database: dbStatus,
+        version: payload.version || '1.0.0-Java17',
+        uptimeSeconds: payload.uptimeSeconds || 0,
+        message: payload.message || (status === 'UP' ? 'Java 17 REST Service Operational' : 'Service Degraded or Offline'),
       };
     } catch (err: any) {
       return {
         status: 'DOWN',
+        javaStatus: 'DOWN',
+        databaseStatus: 'DISCONNECTED',
+        database: 'DISCONNECTED',
         message: err.name === 'AbortError'
           ? 'Connection timed out (Java server offline)'
           : 'Could not connect to Java REST API at ' + this.baseUrl,
@@ -144,6 +181,40 @@ class ApiClient {
       body: body !== undefined ? JSON.stringify(body) : undefined,
       headers,
     });
+  }
+
+  public postRaw<T>(endpoint: string, rawText: string) {
+    const url = `${this.baseUrl}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs * 2);
+
+    return fetch(url, {
+      method: 'POST',
+      body: rawText,
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'text/plain',
+        Accept: 'application/json',
+      },
+    })
+      .then(async (res) => {
+        clearTimeout(timer);
+        const data = await res.json();
+        return {
+          success: res.ok,
+          data: data?.data !== undefined ? data.data : data,
+          error: !res.ok ? (data?.error || `HTTP ${res.status}`) : undefined,
+          timestamp: new Date().toISOString(),
+        } as ApiResponse<T>;
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        return {
+          success: false,
+          error: err.message || 'Failed to upload logs',
+          timestamp: new Date().toISOString(),
+        } as ApiResponse<T>;
+      });
   }
 
   public put<T>(endpoint: string, body?: any, headers?: Record<string, string>) {

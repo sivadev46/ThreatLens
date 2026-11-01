@@ -20,6 +20,7 @@ import {
   INITIAL_AUDIT_LOGS,
   INITIAL_UPLOADED_FILES,
 } from './mockSecurityData';
+import { apiClient } from './apiClient';
 
 const STORAGE_KEYS = {
   LOGS: 'sla_logs_v1',
@@ -49,9 +50,128 @@ class SecurityService {
   private uploadedFiles: UploadedFileRecord[] = [];
   private currentUser: UserProfile = INITIAL_USER;
   private listeners: Array<() => void> = [];
+  private isSyncing = false;
 
   constructor() {
     this.initFromStorage();
+    setTimeout(() => {
+      this.syncWithBackend().catch(() => {});
+    }, 150);
+  }
+
+  public async syncWithBackend(): Promise<boolean> {
+    if (this.isSyncing) return false;
+    this.isSyncing = true;
+    try {
+      const health = await apiClient.checkHealth();
+      if (health.status !== 'UP') {
+        this.isSyncing = false;
+        return false;
+      }
+
+      const [logsRes, alertsRes, rulesRes, blocklistRes, auditRes] = await Promise.allSettled([
+        apiClient.get<any[]>('/logs?limit=500'),
+        apiClient.get<any[]>('/alerts?limit=500'),
+        apiClient.get<any[]>('/rules'),
+        apiClient.get<any[]>('/blocklist'),
+        apiClient.get<any[]>('/audit-logs?limit=500'),
+      ]);
+
+      let changed = false;
+
+      if (logsRes.status === 'fulfilled' && logsRes.value.success && Array.isArray(logsRes.value.data) && logsRes.value.data.length > 0) {
+        this.logs = logsRes.value.data.map((l: any) => ({
+          id: l.id || `log-${Date.now()}`,
+          timestamp: typeof l.timestamp === 'string' ? l.timestamp.replace('T', ' ').substring(0, 19) : new Date().toISOString().substring(0, 19),
+          sourceIp: l.sourceIp,
+          username: l.username,
+          eventType: l.eventType,
+          endpoint: l.endpoint,
+          statusCode: l.statusCode || 200,
+          rawLine: l.rawLine || `${l.timestamp} | ${l.sourceIp} | ${l.username} | ${l.eventType} | ${l.endpoint}`,
+          logSource: l.sourceId || 'database',
+        }));
+        changed = true;
+      }
+
+      if (alertsRes.status === 'fulfilled' && alertsRes.value.success && Array.isArray(alertsRes.value.data) && alertsRes.value.data.length > 0) {
+        this.alerts = alertsRes.value.data.map((a: any) => ({
+          id: a.id,
+          ruleId: a.ruleId,
+          ruleCode: a.ruleCode,
+          ruleName: a.ruleName,
+          severity: a.severity,
+          status: a.status || 'OPEN',
+          sourceIp: a.sourceIp,
+          affectedUsername: a.targetUsername,
+          summary: `${a.ruleName}: ${a.eventCount || 1} incident events observed from ${a.sourceIp}`,
+          timestamp: typeof a.timestamp === 'string' ? a.timestamp.replace('T', ' ').substring(0, 19) : new Date().toISOString().substring(0, 19),
+          eventCount: a.eventCount || 1,
+          timeWindowSeconds: a.timeWindowSeconds || 60,
+          evidenceLogIds: a.evidenceLogIds || [],
+          notes: [],
+          history: [],
+        }));
+        changed = true;
+      }
+
+      if (rulesRes.status === 'fulfilled' && rulesRes.value.success && Array.isArray(rulesRes.value.data) && rulesRes.value.data.length > 0) {
+        this.rules = rulesRes.value.data.map((r: any) => ({
+          id: r.id,
+          code: r.code,
+          name: r.name,
+          description: r.description,
+          severity: r.severity,
+          enabled: r.enabled !== undefined ? r.enabled : true,
+          thresholdValue: r.thresholdValue || 5,
+          timeWindowSeconds: r.timeWindowSeconds || 60,
+          targetEventType: r.targetEventType || 'LOGIN_FAILED',
+          triggerConditionExplanation: r.explanation || r.description || `COUNT(${r.targetEventType || 'LOGIN_FAILED'}) >= ${r.thresholdValue || 5}`,
+          totalTriggerCount: r.totalTriggerCount || 0,
+        }));
+        changed = true;
+      }
+
+      if (blocklistRes.status === 'fulfilled' && blocklistRes.value.success && Array.isArray(blocklistRes.value.data) && blocklistRes.value.data.length > 0) {
+        this.blocklist = blocklistRes.value.data.map((b: any) => ({
+          id: b.id,
+          ipAddress: b.ipAddress,
+          reason: b.reason,
+          addedBy: b.addedBy,
+          status: b.status || 'ACTIVE',
+          threatCategory: b.threatCategory || 'MANUAL',
+          threatAsn: b.threatAsn || 'AS-UNKNOWN',
+          createdAt: typeof b.addedAt === 'string' ? b.addedAt.replace('T', ' ').substring(0, 19) : new Date().toISOString().substring(0, 19),
+          associatedAlertCount: 0,
+        }));
+        changed = true;
+      }
+
+      if (auditRes.status === 'fulfilled' && auditRes.value.success && Array.isArray(auditRes.value.data) && auditRes.value.data.length > 0) {
+        this.auditLogs = auditRes.value.data.map((aud: any) => ({
+          id: aud.id,
+          timestamp: typeof aud.timestamp === 'string' ? aud.timestamp.replace('T', ' ').substring(0, 19) : new Date().toISOString().substring(0, 19),
+          actor: aud.actor,
+          action: aud.action,
+          category: aud.category,
+          details: aud.details,
+          ipAddress: aud.ipAddress,
+          status: aud.status || 'SUCCESS',
+          hash: aud.entryHash || aud.hash || 'GENESIS',
+        }));
+        changed = true;
+      }
+
+      if (changed) {
+        this.persist();
+        this.notify();
+      }
+      return true;
+    } catch {
+      return false;
+    } finally {
+      this.isSyncing = false;
+    }
   }
 
   private initFromStorage() {
@@ -174,6 +294,7 @@ class SecurityService {
   public clearLogs(): void {
     const count = this.logs.length;
     this.logs = [];
+    apiClient.delete('/logs').catch(() => {});
     this.logAudit({
       actor: this.currentUser.username,
       action: 'LOGS_CLEARED',
@@ -318,6 +439,11 @@ class SecurityService {
     });
 
     this.persist();
+
+    // Asynchronously dispatch to Java backend & MySQL database
+    apiClient.postRaw('/logs', content)
+      .then(() => this.syncWithBackend())
+      .catch(() => {});
 
     return {
       totalLines: lines.length,
@@ -632,6 +758,14 @@ class SecurityService {
       status: 'SUCCESS',
     });
 
+    apiClient.patch('/alerts', {
+      alertId,
+      action: 'UPDATE_STATUS',
+      status: newStatus,
+      reason,
+      actor: this.currentUser.fullName,
+    }).catch(() => {});
+
     this.persist();
     return true;
   }
@@ -657,6 +791,13 @@ class SecurityService {
       ipAddress: '127.0.0.1',
       status: 'SUCCESS',
     });
+
+    apiClient.patch('/alerts', {
+      alertId,
+      action: 'ADD_NOTE',
+      note: noteText.trim(),
+      author: this.currentUser.fullName,
+    }).catch(() => {});
 
     this.persist();
     return true;
@@ -732,6 +873,14 @@ class SecurityService {
       status: 'SUCCESS',
     });
 
+    apiClient.patch('/rules', {
+      id: rule.id,
+      enabled: rule.enabled,
+      timeWindowSeconds: rule.timeWindowSeconds,
+      thresholdValue: rule.thresholdValue,
+      severity: rule.severity,
+    }).catch(() => {});
+
     this.persist();
     return true;
   }
@@ -754,6 +903,14 @@ class SecurityService {
       ipAddress: '127.0.0.1',
       status: 'SUCCESS',
     });
+
+    apiClient.patch('/rules', {
+      id: rule.id,
+      enabled: rule.enabled,
+      timeWindowSeconds: rule.timeWindowSeconds,
+      thresholdValue: rule.thresholdValue,
+      severity: rule.severity,
+    }).catch(() => {});
 
     this.persist();
     return true;
@@ -798,6 +955,8 @@ class SecurityService {
       status: 'SUCCESS',
     });
 
+    apiClient.post('/rules', newRule).catch(() => {});
+
     this.persist();
     return { success: true };
   }
@@ -821,6 +980,8 @@ class SecurityService {
       ipAddress: '127.0.0.1',
       status: 'SUCCESS',
     });
+
+    apiClient.delete(`/rules?id=${ruleId}`).catch(() => {});
 
     this.persist();
     return { success: true };
@@ -968,6 +1129,8 @@ class SecurityService {
       status: 'SUCCESS',
     });
 
+    apiClient.post('/blocklist', newEntry).catch(() => {});
+
     this.persist();
     return { success: true };
   }
@@ -1026,6 +1189,8 @@ class SecurityService {
       status: 'SUCCESS',
     });
 
+    apiClient.delete(`/blocklist?id=${id}`).catch(() => {});
+
     this.persist();
     return true;
   }
@@ -1044,6 +1209,8 @@ class SecurityService {
       ipAddress: '127.0.0.1',
       status: 'SUCCESS',
     });
+
+    apiClient.patch('/blocklist', { id: entry.id, status: entry.status }).catch(() => {});
 
     this.persist();
     return true;
@@ -1075,6 +1242,7 @@ class SecurityService {
       hash,
     };
     this.auditLogs.unshift(auditItem);
+    apiClient.post('/audit-logs', auditItem).catch(() => {});
     this.persist();
   }
 

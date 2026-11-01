@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   RotateCcw,
   CheckCircle2,
@@ -75,7 +75,7 @@ export const SettingsPage: React.FC = () => {
 
   // DB Connection Testing
   const [isTestingDb, setIsTestingDb] = useState(false);
-  const [dbStatus, setDbStatus] = useState<'idle' | 'simulated_ok'>('idle');
+  const [dbStatus, setDbStatus] = useState<'idle' | 'connected' | 'disconnected' | 'simulated_ok'>('idle');
 
   // DDL Schema Modal
   const [showDdlModal, setShowDdlModal] = useState(false);
@@ -255,17 +255,28 @@ export const SettingsPage: React.FC = () => {
     });
   };
 
-  const handleTestDbConnection = () => {
+  const handleTestDbConnection = async () => {
     setIsTestingDb(true);
-    setTimeout(() => {
-      setIsTestingDb(false);
-      setDbStatus('simulated_ok');
+    apiClient.setBaseUrl(apiBaseUrl);
+    const health = await apiClient.checkHealth();
+    setBackendHealth(health);
+    setIsTestingDb(false);
+
+    if (health.databaseStatus === 'CONNECTED' || health.database === 'CONNECTED') {
+      setDbStatus('connected');
       showToast({
         type: 'success',
-        title: 'Connection Validated',
-        message: 'Driver com.mysql.cj.jdbc.Driver verified.',
+        title: 'MySQL Connection Validated',
+        message: 'Driver com.mysql.cj.jdbc.Driver verified. Database sentinel_soc is connected!',
       });
-    }, 600);
+    } else {
+      setDbStatus('disconnected');
+      showToast({
+        type: 'error',
+        title: 'Database Disconnected',
+        message: health.message || 'Could not verify JDBC connection to MySQL on port 3306.',
+      });
+    }
   };
 
   const handleRunTestSuite = () => {
@@ -282,19 +293,30 @@ export const SettingsPage: React.FC = () => {
     }, 300);
   };
 
-  const handleProbeBackend = async () => {
+  const handleProbeBackend = async (silent: boolean = false) => {
     setIsProbingBackend(true);
     apiClient.setBaseUrl(apiBaseUrl);
     const health = await apiClient.checkHealth();
     setBackendHealth(health);
+    if (health.databaseStatus === 'CONNECTED' || health.database === 'CONNECTED') {
+      setDbStatus('connected');
+    } else if (health.status !== 'DOWN') {
+      setDbStatus('disconnected');
+    }
     setIsProbingBackend(false);
 
-    showToast({
-      type: health.status === 'UP' ? 'success' : 'info',
-      title: health.status === 'UP' ? 'REST API Connected' : 'Server Offline',
-      message: health.message || (health.status === 'UP' ? 'Java 17 backend online.' : 'Operating in client mock mode.'),
-    });
+    if (!silent) {
+      showToast({
+        type: health.status === 'UP' ? 'success' : health.status === 'DEGRADED' ? 'warning' : 'info',
+        title: health.status === 'UP' ? 'REST API Connected' : health.status === 'DEGRADED' ? 'Degraded (DB Offline)' : 'Server Offline',
+        message: health.message || (health.status === 'UP' ? 'Java 17 backend and MySQL online.' : 'Operating in client mock mode.'),
+      });
+    }
   };
+
+  useEffect(() => {
+    handleProbeBackend(true);
+  }, []);
 
   const schemaTables = [
     { name: 'users', purpose: 'SOC operator credentials & BCrypt hashes' },
@@ -826,8 +848,8 @@ CREATE TABLE IF NOT EXISTS audit_logs (
               subtitle="HTTP JSON REST service (Default: port 8080)"
               action={
                 <Badge
-                  label={backendHealth?.status === 'UP' ? 'CONNECTED' : 'DISCONNECTED'}
-                  status={backendHealth?.status === 'UP' ? 'RESOLVED' : 'OPEN'}
+                  label={backendHealth?.status === 'UP' ? 'CONNECTED' : backendHealth?.status === 'DEGRADED' ? 'DEGRADED' : 'DISCONNECTED'}
+                  status={backendHealth?.status === 'UP' ? 'RESOLVED' : backendHealth?.status === 'DEGRADED' ? 'INVESTIGATING' : 'OPEN'}
                   size="sm"
                 />
               }
@@ -849,7 +871,7 @@ CREATE TABLE IF NOT EXISTS audit_logs (
                       size="sm"
                       variant="primary"
                       isLoading={isProbingBackend}
-                      onClick={handleProbeBackend}
+                      onClick={() => handleProbeBackend(false)}
                     >
                       Probe Health
                     </Button>
@@ -859,15 +881,33 @@ CREATE TABLE IF NOT EXISTS audit_logs (
                 {backendHealth && (
                   <div className="p-3.5 rounded-lg border dark:border-slate-800 border-slate-200 dark:bg-slate-900/50 bg-slate-50 space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="dark:text-slate-400 text-slate-500">Service Status:</span>
-                      <span className={`font-mono font-bold ${backendHealth.status === 'UP' ? 'text-emerald-500' : 'text-rose-500'}`}>
+                      <span className="dark:text-slate-400 text-slate-500">Overall Status:</span>
+                      <span className={`font-mono font-bold ${backendHealth.status === 'UP' ? 'text-emerald-500' : backendHealth.status === 'DEGRADED' ? 'text-amber-500' : 'text-rose-500'}`}>
                         {backendHealth.status}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="dark:text-slate-400 text-slate-500">Java Service:</span>
+                      <span className={`font-mono font-bold ${backendHealth.javaStatus === 'UP' || backendHealth.status === 'UP' || backendHealth.status === 'DEGRADED' ? 'text-emerald-500' : 'text-rose-500'}`}>
+                        {backendHealth.javaStatus || (backendHealth.status !== 'DOWN' ? 'UP' : 'DOWN')}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="dark:text-slate-400 text-slate-500">Database Connection:</span>
+                      <span className={`font-mono font-bold ${backendHealth.databaseStatus === 'CONNECTED' || backendHealth.database === 'CONNECTED' ? 'text-emerald-500' : 'text-rose-500'}`}>
+                        {backendHealth.databaseStatus || backendHealth.database || 'DISCONNECTED'}
                       </span>
                     </div>
                     {backendHealth.version && (
                       <div className="flex items-center justify-between">
                         <span className="dark:text-slate-400 text-slate-500">Java Version:</span>
                         <span className="font-mono dark:text-slate-300 text-slate-700">{backendHealth.version}</span>
+                      </div>
+                    )}
+                    {backendHealth.uptimeSeconds !== undefined && backendHealth.uptimeSeconds > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="dark:text-slate-400 text-slate-500">Uptime:</span>
+                        <span className="font-mono dark:text-slate-300 text-slate-700">{backendHealth.uptimeSeconds}s</span>
                       </div>
                     )}
                     {backendHealth.message && (
@@ -886,8 +926,8 @@ CREATE TABLE IF NOT EXISTS audit_logs (
               subtitle="HikariCP connection pool & normalized tables"
               action={
                 <Badge
-                  label={dbStatus === 'simulated_ok' ? 'VALIDATED' : 'IDLE'}
-                  status={dbStatus === 'simulated_ok' ? 'RESOLVED' : 'INVESTIGATING'}
+                  label={dbStatus === 'connected' || backendHealth?.databaseStatus === 'CONNECTED' ? 'CONNECTED' : dbStatus === 'disconnected' ? 'DISCONNECTED' : 'IDLE'}
+                  status={dbStatus === 'connected' || backendHealth?.databaseStatus === 'CONNECTED' ? 'RESOLVED' : dbStatus === 'disconnected' ? 'OPEN' : 'INVESTIGATING'}
                   size="sm"
                 />
               }

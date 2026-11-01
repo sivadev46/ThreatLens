@@ -18,6 +18,11 @@ public class Alert {
     private int timeWindowSeconds;
     private List<String> evidenceLogIds = new ArrayList<>();
 
+    private String assignedTo;
+    private String resolutionReason;
+    private String resolvedBy;
+    private LocalDateTime resolvedAt;
+
     public Alert() {}
 
     public String getId() { return id; }
@@ -55,4 +60,16 @@ public class Alert {
 
     public List<String> getEvidenceLogIds() { return evidenceLogIds; }
     public void setEvidenceLogIds(List<String> evidenceLogIds) { this.evidenceLogIds = evidenceLogIds; }
+
+    public String getAssignedTo() { return assignedTo; }
+    public void setAssignedTo(String assignedTo) { this.assignedTo = assignedTo; }
+
+    public String getResolutionReason() { return resolutionReason; }
+    public void setResolutionReason(String resolutionReason) { this.resolutionReason = resolutionReason; }
+
+    public String getResolvedBy() { return resolvedBy; }
+    public void setResolvedBy(String resolvedBy) { this.resolvedBy = resolvedBy; }
+
+    public LocalDateTime getResolvedAt() { return resolvedAt; }
+    public void setResolvedAt(LocalDateTime resolvedAt) { this.resolvedAt = resolvedAt; }
 }

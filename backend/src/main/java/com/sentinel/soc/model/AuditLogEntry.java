@@ -12,6 +12,8 @@ public class AuditLogEntry {
     private String ipAddress;
     private String status; // SUCCESS, FAILURE
     private String hash;
+    private String previousHash;
+    private String entryHash;
 
     public AuditLogEntry() {}
 
@@ -39,6 +41,18 @@ public class AuditLogEntry {
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
 
-    public String getHash() { return hash; }
-    public void setHash(String hash) { this.hash = hash; }
+    public String getHash() { return hash != null ? hash : entryHash; }
+    public void setHash(String hash) { 
+        this.hash = hash; 
+        if (this.entryHash == null) this.entryHash = hash;
+    }
+
+    public String getPreviousHash() { return previousHash; }
+    public void setPreviousHash(String previousHash) { this.previousHash = previousHash; }
+
+    public String getEntryHash() { return entryHash != null ? entryHash : hash; }
+    public void setEntryHash(String entryHash) { 
+        this.entryHash = entryHash; 
+        if (this.hash == null) this.hash = entryHash;
+    }
 }

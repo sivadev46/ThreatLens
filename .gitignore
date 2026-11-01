@@ -44,3 +44,7 @@ db.properties
 *.zip
 *.tar.gz
 scratch/
+
+# Maven binary distribution
+.mvn/apache-maven/
+backend/.mvn/apache-maven/

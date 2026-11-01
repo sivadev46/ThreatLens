@@ -17,8 +17,11 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(128) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
   role ENUM('SOC Analyst', 'Security Engineer', 'SOC Admin') NOT NULL DEFAULT 'SOC Analyst',
+  avatar_color VARCHAR(32) DEFAULT '#3b82f6',
+  is_active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  last_login TIMESTAMP NULL
+  last_login TIMESTAMP NULL,
+  last_login_at TIMESTAMP NULL
 ) ENGINE=InnoDB;
 
 -- 2. LOG SOURCES (Registered syslog / web servers)
@@ -58,13 +61,15 @@ CREATE TABLE IF NOT EXISTS detection_rules (
   description TEXT NOT NULL,
   severity ENUM('CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO') NOT NULL,
   enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
   threshold_value INT NOT NULL DEFAULT 5,
   time_window_seconds INT NOT NULL DEFAULT 60,
   target_event_type VARCHAR(32) NOT NULL DEFAULT 'LOGIN_FAILED',
   explanation TEXT NOT NULL,
   total_trigger_count INT NOT NULL DEFAULT 0,
   last_triggered TIMESTAMP NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NULL
 ) ENGINE=InnoDB;
 
 -- 5. IP BLOCKLIST (Prohibited / Monitored Addresses)
@@ -77,6 +82,8 @@ CREATE TABLE IF NOT EXISTS ip_blocklist (
   threat_category ENUM('BRUTE_FORCE', 'DOS_FLOOD', 'SCANNER', 'SUSPICIOUS', 'MANUAL') NOT NULL DEFAULT 'MANUAL',
   threat_asn VARCHAR(64) DEFAULT 'AS-UNKNOWN',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  expires_at TIMESTAMP NULL,
   INDEX idx_blocklist_ip (ip_address),
   INDEX idx_blocklist_status (status)
 ) ENGINE=InnoDB;
@@ -94,6 +101,10 @@ CREATE TABLE IF NOT EXISTS alerts (
   timestamp TIMESTAMP NOT NULL,
   event_count INT NOT NULL DEFAULT 1,
   time_window_seconds INT NOT NULL DEFAULT 60,
+  assigned_to VARCHAR(64) NULL,
+  resolution_reason VARCHAR(255) NULL,
+  resolved_by VARCHAR(64) NULL,
+  resolved_at TIMESTAMP NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_alerts_status (status),
   INDEX idx_alerts_severity (severity),
@@ -115,10 +126,13 @@ CREATE TABLE IF NOT EXISTS alert_evidence (
 CREATE TABLE IF NOT EXISTS alert_notes (
   id VARCHAR(64) PRIMARY KEY,
   alert_id VARCHAR(64) NOT NULL,
-  author_name VARCHAR(128) NOT NULL,
-  author_role VARCHAR(64) NOT NULL,
-  note TEXT NOT NULL,
+  author VARCHAR(128) NOT NULL,
+  author_name VARCHAR(128) NULL,
+  author_role VARCHAR(64) DEFAULT 'SOC Analyst',
+  note_text TEXT NOT NULL,
+  note TEXT NULL,
   timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (alert_id) REFERENCES alerts(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
@@ -128,11 +142,13 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   actor VARCHAR(64) NOT NULL,
   action VARCHAR(64) NOT NULL,
-  category ENUM('RULE_CONFIG', 'BLOCKLIST', 'ALERT_TRIAGE', 'AUTH', 'LOG_IMPORT', 'SYSTEM') NOT NULL,
+  category VARCHAR(64) NOT NULL,
   details TEXT NOT NULL,
   ip_address VARCHAR(45) NOT NULL,
   status ENUM('SUCCESS', 'FAILURE') NOT NULL DEFAULT 'SUCCESS',
   hash VARCHAR(128) NULL,
+  previous_hash VARCHAR(128) NULL,
+  entry_hash VARCHAR(128) NULL,
   INDEX idx_audit_timestamp (timestamp),
   INDEX idx_audit_category (category)
 ) ENGINE=InnoDB;

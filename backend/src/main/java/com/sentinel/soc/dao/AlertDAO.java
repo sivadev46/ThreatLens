@@ -156,4 +156,21 @@ public class AlertDAO {
             stmt.executeUpdate();
         }
     }
+
+    public boolean delete(String alertId) throws SQLException {
+        String sql = "DELETE FROM alerts WHERE id = ?";
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, alertId);
+            return stmt.executeUpdate() > 0;
+        }
+    }
+
+    public void deleteAll() throws SQLException {
+        String sql = "DELETE FROM alerts";
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.executeUpdate();
+        }
+    }
 }

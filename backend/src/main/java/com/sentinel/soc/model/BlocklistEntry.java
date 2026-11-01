@@ -11,6 +11,8 @@ public class BlocklistEntry {
     private String threatCategory;
     private String threatAsn;
     private LocalDateTime createdAt;
+    private LocalDateTime addedAt;
+    private LocalDateTime expiresAt;
 
     public BlocklistEntry() {}
 
@@ -19,6 +21,8 @@ public class BlocklistEntry {
 
     public String getIpAddress() { return ipAddress; }
     public void setIpAddress(String ipAddress) { this.ipAddress = ipAddress; }
+    public String getIp() { return ipAddress; }
+    public void setIp(String ip) { this.ipAddress = ip; }
 
     public String getReason() { return reason; }
     public void setReason(String reason) { this.reason = reason; }
@@ -35,6 +39,18 @@ public class BlocklistEntry {
     public String getThreatAsn() { return threatAsn; }
     public void setThreatAsn(String threatAsn) { this.threatAsn = threatAsn; }
 
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+    public LocalDateTime getCreatedAt() { return createdAt != null ? createdAt : addedAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { 
+        this.createdAt = createdAt; 
+        if (this.addedAt == null) this.addedAt = createdAt;
+    }
+
+    public LocalDateTime getAddedAt() { return addedAt != null ? addedAt : createdAt; }
+    public void setAddedAt(LocalDateTime addedAt) { 
+        this.addedAt = addedAt; 
+        if (this.createdAt == null) this.createdAt = addedAt;
+    }
+
+    public LocalDateTime getExpiresAt() { return expiresAt; }
+    public void setExpiresAt(LocalDateTime expiresAt) { this.expiresAt = expiresAt; }
 }
